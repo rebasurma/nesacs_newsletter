@@ -1,0 +1,63 @@
+name: Build & Index NESACS Nucleus Article Cards
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 2 8 * *"  # Runs monthly, 2AM UTC, 8th of month
+
+jobs:
+  build-index:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Scrape Archive Page
+        run: |
+          python scripts/scrape_archive.py
+
+      - name: Download Issue PDFs (temp)
+        run: |
+          python scripts/download_temp_pdfs.py
+
+      - name: Extract & Split Articles
+        run: |
+          python scripts/extract_and_split.py
+
+      - name: Build Cards and Manifest
+        run: |
+          python scripts/build_cards.py
+
+      - name: Delete Temporary Files
+        run: |
+          rm -rf tmp_pdfs tmp_articles_json
+          echo "Temporary files wiped."
+
+      - name: Commit and Push Cards/Manifest
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add data/cards_json data/cards_md data/manifest.json
+          git status
+          if ! git diff --cached --quiet; then
+            git commit -m "Update article cards and manifest [bot][skip ci]"
+            git push
+          else
+            echo "No changes to commit."
+          fi
